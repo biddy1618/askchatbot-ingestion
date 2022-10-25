@@ -181,7 +181,7 @@ def extract_formatted_data(data: list):
         return qa_data + content_data
     
     
-def ingest_into_es(data, index):
+def ingest_into_es(data: list, index: str):
     """Deleting any existing index and then ingesting the new data"""
     if es.indices.exists(index):
         es.indices.delete(
@@ -191,7 +191,7 @@ def ingest_into_es(data, index):
     def gen_data():
         print('\nIngesting data into Elasticsearch...')
         for item in tqdm(data):
-            yield {'_index': index, **item}
+            yield {'_index': index, '_type': '_doc', **item}
     bulk(es, gen_data())
     
 def save_data(path: str, data: list):
@@ -201,7 +201,7 @@ def save_data(path: str, data: list):
         
     ds = Dataset.from_pandas(pd.DataFrame(data))
     ds.save_to_disk(f'./{DATA_PATH}/{path}')
-    ingest_into_es(data, path)
+    ingest_into_es(data=data, index=path)
     
 def parse_ask_extension_data():
     ask_extension_data = get_ask_extension_data()
@@ -219,5 +219,21 @@ def get_all_data():
     
     save_data('chatbot_data', all_data)
     
+def parse_test_data(file: str, sheet_names: list):
+    """Retrieves questions and answer links from excel file. Stores in elastic search and saves to disk"""
+    for sheet_name in sheet_names:
+        
+        df = pd.read_excel(file, sheet_name=sheet_name)
+        test_questions = []
+        for i, row in df.iterrows(): 
+            original_url = row['resource'] if 'resource' in df.columns else row['URL']
+            if isinstance(original_url, str):
+                url = f"https://{original_url}" if "http" not in original_url else original_url
+                question = row['question'] if 'question' in df.columns else row['Question']
+                if url and question:
+                    test_questions.append({"question": question, "url": url})
+        save_data(path=f'test_data_{sheet_name.lower()}', data=test_questions)
+    
 if __name__ == '__main__':
+    parse_test_data('AE_test_QA_chatbot_v2.xlsx', ['made_up_OK_OR', 'UC_IPM_chatbot'])
     get_all_data()
