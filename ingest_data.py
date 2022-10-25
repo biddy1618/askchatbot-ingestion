@@ -72,12 +72,12 @@ def chunk_data(txt: str) -> list:
     """Checks if text is over the maximum model length. If so, splits into chunks based on paragraphs"""
     assert isinstance(txt, str)
     token_length = get_token_length(txt)
-    if token_length > MAX_LENGTH and '\n' in txt:
+    if token_length >= MAX_LENGTH and '\n' in txt:
         txts = txt.split('\n')
         chunked = [chunk_data(t) for t in txts]
         flattened = [t for chunk in chunked for t in chunk if t]
         return flattened
-    elif token_length > MAX_LENGTH:
+    elif token_length >= MAX_LENGTH:
         return process_long_text(txt)
     elif len(txt.split()) <= 12:
         return []
@@ -189,7 +189,7 @@ def ingest_into_es(data, index):
             ignore  = 404)
         es.indices.refresh()
     def gen_data():
-        print('Ingesting data into Elasticsearch...')
+        print('\nIngesting data into Elasticsearch...')
         for item in tqdm(data):
             yield {'_index': index, **item}
     bulk(es, gen_data())
@@ -201,6 +201,7 @@ def save_data(path: str, data: list):
         
     ds = Dataset.from_pandas(pd.DataFrame(data))
     ds.save_to_disk(f'./{DATA_PATH}/{path}')
+    ingest_into_es(data, path)
     
 def parse_ask_extension_data():
     ask_extension_data = get_ask_extension_data()
