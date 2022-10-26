@@ -18,8 +18,6 @@ tokenizer = model.tokenizer
 es_host = 'https://dev.es.chat.ask.eduworks.com/'
 es = Elasticsearch([es_host], http_auth=('elastic', 'changeme'))
 
-
-
 # Creating a folder to store the data. Will also be ingested into ES
 DATA_PATH = './cleaned_new'
 if not os.path.exists(DATA_PATH):
@@ -59,7 +57,7 @@ def clean_text(text: str) -> str:
     text = re.sub(' +', ' ', text)
     text = text.replace(u'\xa0', u' ')
     text = re.sub('On [A-Z][a-z]*(?:| \d*)\, ([A-Z].+|\d{4}.+)', '', text).strip() # Weird ask error
-    text = re.sub('\-+(?:| )(?:Forwarded|Original).+', '', text).strip() # Weird ask error')
+    text = re.sub('\-+(?:| )(?:Forwarded|Original).+', '', text).strip() 
     text = re.sub('\. [A-Z][a-z]+$', '.', text)
     text = re.sub(' From: [A-Z].+', '', text)
     text = re.sub(' Sent from [A-Z].+', '', text)
@@ -158,7 +156,7 @@ def is_qa_format(item: dict) -> bool:
 def parse_qa_data(data: list) -> list:
     if data:
         relevant_text = [{'url': item['link'],'text': clean_text(v)} for item in data for k,v in item.items() if k in ['question', 'answer']]
-        return  [{'url': item['url'], 'text': chunk} for item in tqdm(relevant_text) for chunk in chunk_data(item['text']) if chunk]
+        return  [{'url': item['url'], 'text': chunk} for item in tqdm(relevant_text, desc='parsing qa data') for chunk in chunk_data(item['text']) if chunk]
     else:
         return []
 
@@ -189,8 +187,7 @@ def ingest_into_es(data: list, index: str):
             ignore  = 404)
         es.indices.refresh()
     def gen_data():
-        print('\nIngesting data into Elasticsearch...')
-        for item in tqdm(data):
+        for item in tqdm(data, desc='Ingesting into Elasticsearch'):
             yield {'_index': index, '_type': '_doc', **item}
     bulk(es, gen_data())
     
@@ -218,8 +215,9 @@ def get_all_data():
             all_data.extend(formatted)
     
     save_data('chatbot_data', all_data)
+    return list(set([item['url'] for item in all_data]))
     
-def parse_test_data(file: str, sheet_names: list):
+def parse_test_data(file: str, sheet_names: list, all_urls: list):
     """Retrieves questions and answer links from excel file. Stores in elastic search and saves to disk"""
     for sheet_name in sheet_names:
         
@@ -230,10 +228,11 @@ def parse_test_data(file: str, sheet_names: list):
             if isinstance(original_url, str):
                 url = f"https://{original_url}" if "http" not in original_url else original_url
                 question = row['question'] if 'question' in df.columns else row['Question']
-                if url and question:
+                if url and question and url in all_urls:
                     test_questions.append({"question": question, "url": url})
         save_data(path=f'test_data_{sheet_name.lower()}', data=test_questions)
     
 if __name__ == '__main__':
-    parse_test_data('AE_test_QA_chatbot_v2.xlsx', ['made_up_OK_OR', 'UC_IPM_chatbot'])
-    get_all_data()
+    all_links = get_all_data()
+    sheets = ['made_up_OK_OR', 'UC_IPM_chatbot']
+    parse_test_data('AE_test_QA_chatbot_v2.xlsx', sheets, all_links)
