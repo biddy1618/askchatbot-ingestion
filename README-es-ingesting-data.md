@@ -22,9 +22,9 @@ Copy the downloaded folders through DVC - `scrape_cleaned_Dec2021` and `scrape_c
 
 Clone [data repo](https://git.eduworks.us/data/ask-extension/oku-xmltojson) and download data using DVC.
 
-The current version of data corresponds to this commit - [2197a3b3bf5249590f14ede2da018a52148f8ec7](https://git.eduworks.us/data/ask-extension/oku-xmltojson/-/commit/2197a3b3bf5249590f14ede2da018a52148f8ec7) at [data repo](https://git.eduworks.us/data/ask-extension/oku-xmltojson).
+The current version of data corresponds to this commit - [39a7adacd302fcaf66ef3168b76d8cbcb7d2c2cf](https://git.eduworks.us/data/ask-extension/oku-xmltojson/-/commit/39a7adacd302fcaf66ef3168b76d8cbcb7d2c2cf) at [data repo](https://git.eduworks.us/data/ask-extension/oku-xmltojson).
 
-Copy the downloaded data `fact-sheets-out.json` to folder `data/okstate`.
+Copy the downloaded data `fact-sheets-out-cleaner.json` to folder `data/okstate`.
 
 ### Oregon State University crawled data
 

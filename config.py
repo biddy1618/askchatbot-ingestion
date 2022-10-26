@@ -43,7 +43,7 @@ embed_url = 'all-distilroberta-v1' # 768
 # embed_url = 'multi-qa-mpnet-base-cos-v1' # 768
 # embed_url = 'all-mpnet-base-v1' # 768
 
-es_combined_index   = 'combined'
+es_combined_index   = 'test'
 es_logging_index    = 'logs'
 es_field_limit      = 32766
 
