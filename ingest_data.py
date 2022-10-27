@@ -205,7 +205,7 @@ def get_thumbnail(item: dict) -> str:
 def get_subheader(content_item):
     if 'subHead' in content_item:
         return content_item['subHead']
-    elif 'header' in content_item and (x:= prepend_heading_tex(content_item['header'])):
+    elif 'header' in content_item and (x:= prepend_heading_text(content_item['header'])):
         return x
     elif 'title' in content_item:
         return content_item['title']
