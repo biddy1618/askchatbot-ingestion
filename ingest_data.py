@@ -9,14 +9,31 @@ from datasets import Dataset
 import pandas as pd
 from elasticsearch.helpers import bulk
 from elasticsearch import Elasticsearch
+from torch import bfloat16
+import time
 
-# Initializing models and constants
+
+# Initializing models
 nlp = spacy.load('en_core_web_sm')
-model = SentenceTransformer('all-mpnet-base-v2')
+model = SentenceTransformer('./model').to('cuda').to(bfloat16)
 MAX_LENGTH = model.max_seq_length
+VECTOR_SIZE = model[1].word_embedding_dimension
 tokenizer = model.tokenizer
-es_host = 'https://dev.es.chat.ask.eduworks.com/'
-es = Elasticsearch([es_host], http_auth=('elastic', 'changeme'))
+
+# Elastic Search settings 
+#SETTINGS =  {"number_of_shards": 2, "number_of_replicas": 1}
+MAPPINGS =  {
+        "dynamic"   : "false",
+        "properties": {
+            "source"        : {"type": "keyword", "index": "false" , "ignore_above": 32766},
+            "url"           : {"type": "keyword", "index": "false", "ignore_above": 32766},
+            "title"         : {"type": "keyword", "index": "false", "ignore_above": 32766},
+            "text"          : {"type": "keyword", "index": "false", "ignore_above": 32766},
+            "subHead"       : {"type": "keyword", "index": "false", "ignore_above": 32766},
+            "thumbnail"     : {"type": "keyword", "index": "false", "ignore_above": 32766},
+            "vector"        : {"type": "dense_vector", "dims": VECTOR_SIZE}
+        }
+    }
 
 # Creating a folder to store the data. Will also be ingested into ES
 DATA_PATH = './cleaned_new'
@@ -125,6 +142,8 @@ def get_ask_text(data: list) -> list:
     unique_text = set()
     for item in tqdm(data, desc="Adding Ask Extension Data"):
         url = get_link(item)
+        thumbnail = item['attachments'][0] if 'attachments' in item else ''
+        subhead = re.sub('\#.+', '', item['title']).strip()
         for k in item['answer']:
             text = clean_text(item['answer'][k]['response'])
             text = re.sub('([a-z,”:.])\n([a-z“–])', r'\1 \2', text) # Weird line break in some answers
@@ -133,7 +152,8 @@ def get_ask_text(data: list) -> list:
                 chunk = re.sub('\s+', ' ', chunk)
                 if chunk not in unique_text:
                     unique_text.add(chunk)
-                    yield {'url': url, 'text': chunk}
+                    
+                    yield {'source': "ask_extension_kb", 'title': item['title'], 'url': url, 'text': chunk, 'thumbnail': thumbnail, "subHead": subhead}
                      
                 
 def get_link(item: dict) -> str:
@@ -152,11 +172,59 @@ def is_qa_format(item: dict) -> bool:
         return True
     else:
         return False
+def get_source(url: str) -> str:
+    if 'clemson.edu' in url:
+        return 'clemson'
+    elif 'okstate.edu' in url:
+        return 'oklahoma_state'
+    elif 'oregonstate.edu' in url:
+        return 'oregon_state'
+    elif 'ipm.' in url or 'youtu' in url:
+        return 'uc_ipm'
+    else:
+        print(url)
+        raise Exception
     
+def get_title(item: dict) -> str:
+    """Finds title of item. If it doesn't exist, uses question"""
+    if 'title' in item:
+        return item['title']
+    elif 'question' in item:
+        return item['question']
+    else:
+        return '' 
+        
+def get_thumbnail(item: dict) -> str:
+    if 'thumbnail' in item:
+        return item['thumbnail']
+    elif 'images' in item:
+        return item['images'][0]['src']
+    else:
+        return ''
+    
+def get_subheader(content_item):
+    if 'subHead' in content_item:
+        return content_item['subHead']
+    elif 'header' in content_item and (x:= prepend_heading_tex(content_item['header'])):
+        return x
+    elif 'title' in content_item:
+        return content_item['title']
+    else:
+        return ''
+    
+        
+def get_final_format(item: dict, chunk: str, content) -> dict:
+    url = item['url'] if 'url' in item else item['link']
+    source = get_source(url)
+    title = get_title(item)
+    thumbnail = item['thumbnail'] if 'thumbnail' in item else ''
+    subhead = get_subheader(item)
+    return {'source': source, 'title': title, 'url': url, 'text': chunk, 'thumbnail': thumbnail, "subHead": subhead}
+        
 def parse_qa_data(data: list) -> list:
     if data:
-        relevant_text = [{'url': item['link'],'text': clean_text(v)} for item in data for k,v in item.items() if k in ['question', 'answer']]
-        return  [{'url': item['url'], 'text': chunk} for item in tqdm(relevant_text, desc='parsing qa data') for chunk in chunk_data(item['text']) if chunk]
+        relevant_text = [get_final_format(item, clean_text(v), item) for item in data for k,v in item.items() if k in ['question', 'answer']]
+        return  [get_final_format(item, chunk, item) for item in tqdm(relevant_text, desc='parsing qa data') for chunk in chunk_data(item['text']) if chunk]
     else:
         return []
 
@@ -175,21 +243,27 @@ def extract_formatted_data(data: list):
     else: 
         content_data, qa_data = extract_qa_from_headers(data)
         qa_data = parse_qa_data(qa_data)
-        content_data = [{'url': item['link'],'text': chunk} for item in content_data for content in item['content'] for chunk in clean_dict_item(content) if chunk]
+        content_data = [get_final_format(item, chunk, content) for item in content_data for content in item['content'] for chunk in clean_dict_item(content) if chunk]
         return qa_data + content_data
     
     
 def ingest_into_es(data: list, index: str):
     """Deleting any existing index and then ingesting the new data"""
-    if es.indices.exists(index):
-        es.indices.delete(
-            index   = index, 
-            ignore  = 404)
-        es.indices.refresh()
     def gen_data():
         for item in tqdm(data, desc='Ingesting into Elasticsearch'):
             yield {'_index': index, '_type': '_doc', **item}
-    bulk(es, gen_data())
+            
+    es_hosts = ['http://localhost:9200', 'https://qa.es.chat.ask.eduworks.com/']
+    for es_host in es_hosts:
+        es = Elasticsearch([es_host], http_auth=('elastic', 'changeme'), timeout=140)
+        if es.indices.exists(index):
+            es.indices.delete(
+                index   = index, 
+                ignore  = 404)
+            es.indices.refresh()
+        if 'test_' not in index:
+            es.indices.create(index=index, mappings=MAPPINGS)
+        bulk(es, gen_data())
     
 def save_data(path: str, data: list):
     """Saves as json and as a HuggingFace dataset for easy testing of the model"""
@@ -198,12 +272,18 @@ def save_data(path: str, data: list):
         
     ds = Dataset.from_pandas(pd.DataFrame(data))
     ds.save_to_disk(f'./{DATA_PATH}/{path}')
-    ingest_into_es(data=data, index=path)
+    ingest_into_es(data, path)
     
 def parse_ask_extension_data():
     ask_extension_data = get_ask_extension_data()
     relevant_text = list(get_ask_text(ask_extension_data))
     return relevant_text
+
+def get_vectors(all_data: list) -> list:
+    """Vectorizing text in the dataset and then adding as a key in the list of dicts."""
+    print(f"\nVectorizing {len(all_data)} items\n")
+    vectors = model.encode([item['text'] for item in all_data], batch_size=32, show_progress_bar=True).tolist()
+    return [{**item, "vector": vector} for item, vector in zip(all_data, vectors)]
     
 def get_all_data():
     paths = [f'./data/{f}'for f in os.listdir('./data')]
@@ -213,26 +293,31 @@ def get_all_data():
             data = load_json(path)
             formatted = extract_formatted_data(data)
             all_data.extend(formatted)
-    
+    all_data = get_vectors(all_data)
     save_data('chatbot_data', all_data)
     return list(set([item['url'] for item in all_data]))
     
 def parse_test_data(file: str, sheet_names: list, all_urls: list):
     """Retrieves questions and answer links from excel file. Stores in elastic search and saves to disk"""
     for sheet_name in sheet_names:
-        
         df = pd.read_excel(file, sheet_name=sheet_name)
         test_questions = []
         for i, row in df.iterrows(): 
+            
             original_url = row['resource'] if 'resource' in df.columns else row['URL']
             if isinstance(original_url, str):
                 url = f"https://{original_url}" if "http" not in original_url else original_url
                 question = row['question'] if 'question' in df.columns else row['Question']
                 if url and question and url in all_urls:
-                    test_questions.append({"question": question, "url": url})
-        save_data(path=f'test_data_{sheet_name.lower()}', data=test_questions)
-    
-if __name__ == '__main__':
+                    test_questions.append({"question": question, "url": url, "row": i+2})
+        name = f'test_data_{sheet_name.lower()}'
+        save_data(path=name, data=test_questions)
+        ingest_into_es(test_questions, name)
+        
+def main():
     all_links = get_all_data()
     sheets = ['made_up_OK_OR', 'UC_IPM_chatbot']
-    parse_test_data('AE_test_QA_chatbot_v2.xlsx', sheets, all_links)
+    parse_test_data(file='./data/AE_test_QA_chatbot_v2.xlsx', sheet_names=sheets, all_urls=all_links)
+    
+if __name__ == '__main__':
+    main()
