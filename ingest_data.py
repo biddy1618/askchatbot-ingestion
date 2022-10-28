@@ -253,7 +253,7 @@ def ingest_into_es(data: list, index: str):
         for item in tqdm(data, desc='Ingesting into Elasticsearch'):
             yield {'_index': index, '_type': '_doc', **item}
             
-    es_hosts = ['http://localhost:9200', 'https://qa.es.chat.ask.eduworks.com/']
+    es_hosts = ['http://localhost:9200']
     for es_host in es_hosts:
         es = Elasticsearch([es_host], http_auth=('elastic', 'changeme'), timeout=140)
         if es.indices.exists(index):
@@ -261,18 +261,22 @@ def ingest_into_es(data: list, index: str):
                 index   = index, 
                 ignore  = 404)
             es.indices.refresh()
-        if 'test_' not in index:
-            es.indices.create(index=index, mappings=MAPPINGS)
-        bulk(es, gen_data())
+        es.indices.create(index=index, mappings=MAPPINGS)
+        bulk(es, gen_data(), chunk_size=1000, request_timeout=120)
     
-def save_data(path: str, data: list):
+def save_data(path: str, all_data: list):
     """Saves as json and as a HuggingFace dataset for easy testing of the model"""
     with open(f"./{DATA_PATH}/{path}.json", 'w', encoding = 'utf-8') as w:
-        json.dump(data, w, indent=4, ensure_ascii=False)
+        json.dump(all_data, w, indent=4, ensure_ascii=False)
         
-    ds = Dataset.from_pandas(pd.DataFrame(data))
+    ds = Dataset.from_pandas(pd.DataFrame(all_data))
     ds.save_to_disk(f'./{DATA_PATH}/{path}')
-    ingest_into_es(data, path)
+    if 'test_' not in path:
+        all_data = get_vectors(all_data)
+        
+    ingest_into_es(all_data, path)
+    
+    print(f"fully ingested {path} into elasticsearch")
     
 def parse_ask_extension_data():
     ask_extension_data = get_ask_extension_data()
@@ -293,7 +297,6 @@ def get_all_data():
             data = load_json(path)
             formatted = extract_formatted_data(data)
             all_data.extend(formatted)
-    all_data = get_vectors(all_data)
     save_data('chatbot_data', all_data)
     return list(set([item['url'] for item in all_data]))
     
@@ -311,8 +314,7 @@ def parse_test_data(file: str, sheet_names: list, all_urls: list):
                 if url and question and url in all_urls:
                     test_questions.append({"question": question, "url": url, "row": i+2})
         name = f'test_data_{sheet_name.lower()}'
-        save_data(path=name, data=test_questions)
-        ingest_into_es(test_questions, name)
+        save_data(path=name, all_data=test_questions)
         
 def main():
     all_links = get_all_data()
