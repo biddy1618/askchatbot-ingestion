@@ -40,7 +40,23 @@ Can be found in this [notebook](./scripts/es_eda.ipynb)
 
 ## Ingesting data
 
-Run the scripts in the [notebook](./scripts/es_ingest_data.ipynb) to create indexes and ingest data sources from AE knowledge base (California only) and UC IPM.
+Created the transformed data by running the following script:
+```python
+python etl/transform.py
+```
 
-Run the scripts in the [notebook](./scripts/es_chat_logging.ipynb) to create index for chat history.
+Then ingest the data into ES instance by running the following script:
+```python
+python etl/ingest.py
+```
+
+To create an index for logging, run the following script:
+```python
+python etl/create_logging.py
+```
+
+
+Refer to this [notebook](./scripts/es_ingest_data.ipynb) for more deatils on transforming in ingesting data.
+
+Refer to this [notebook](./scripts/es_chat_logging.ipynb) for more details on logging.
 
