@@ -4,7 +4,7 @@
 
 ### AskExtension knowledge base data
 
-Download data as indicated in this [notebook](./scripts/es_download_ae_kb.ipynb) and data should appear in folder `actions/es/data/askextension_kb`.
+Script should automatically download data.
 
 #### Person of contact
 
@@ -34,10 +34,6 @@ The current version of data corresponds to this commit - (63ae4450124ab06cd6c982
 
 Copy the downloaded data `OSU-Out-Cleaner.json` to `data/orstate`.
 
-## EDA of data
-
-Can be found in this [notebook](./scripts/es_eda.ipynb)
-
 ## Ingesting data
 
 Created the transformed data by running the following script:
@@ -60,3 +56,6 @@ Refer to this [notebook](./scripts/es_ingest_data.ipynb) for more deatils on tra
 
 Refer to this [notebook](./scripts/es_chat_logging.ipynb) for more details on logging.
 
+## Scripts to play
+
+Can be found in the folder `./scripts`.

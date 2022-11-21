@@ -8,4 +8,4 @@ See details at [`README-es-deployment.md`](./deployment/README-es-deployment.md)
 
 ## Data ingestion
 
-See details at [`README-es-ingesting-data.md`](./README-es-ingesting-data.md) file.
+See details at [`README-es-ingesting-data.md`](./etl/README-es-ingesting-data.md) file.
