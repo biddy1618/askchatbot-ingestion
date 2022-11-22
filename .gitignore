@@ -152,5 +152,10 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+#ask data 
+raw_ask_extension_data.json
+
 # Data folder
 data/
+uc_ipm_old/
+chunked_data/

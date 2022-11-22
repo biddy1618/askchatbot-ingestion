@@ -109,8 +109,10 @@ def clean_text(text: str) -> str:
     text = re.sub('((?:\n|\n | \n)[^\w<]*)', r'\n', text)
     text = re.sub(' ([.,!:;?])', r'\1', text)
     text = re.sub('([:;,!?])(\w)', r'\1 \2', text)
+    text = text.replace('&amp;', '&')
     text = re.sub('[.]([A-Z])', r'. \1', text)
     text = re.sub('([:!.,?])\:', r'\1', text)
+    text = re.sub("^(Hi|Hello)(?:,|\.)", '', text)
     text = re.sub('[.](com|org|pdf)([A-Z])', r'.\1\n\2', text)
     
     text = to_markdown(text) # Only converts if there are html tags present in text 
@@ -187,6 +189,7 @@ def get_ask_text(data: list) -> list:
         url = get_link(item)
         thumbnail = item['attachments']['-1'] if 'attachments' in item else ''
         title = re.sub('\#.*', '', item['title']).strip()
+        title = re.sub("<[^>]*>", '', title).strip()
         if 'question' not in item:
             continue
         subhead = clean_text(item['question'])
@@ -266,7 +269,6 @@ def get_subheader(content_item):
 
 def get_final_format(item: dict, chunk: str, content) -> dict:
     url = item['url'] if 'url' in item else item['link']
-    url = url.replace("?src=exchbt", "") 
     source, state = get_source(url)
     title = get_title(item)
     thumbnail = get_thumbnail(item)
@@ -306,8 +308,8 @@ def ingest_into_es(data: list, index: str):
         for item in tqdm(data, desc='Ingesting into Elasticsearch'):
             yield {'_index': index, '_type': '_doc', **item}
             
-    #es_hosts = ['http://localhost:9200/', 'https://dev.es.chat.ask.eduworks.com/', 'https://qa.es.chat.ask.eduworks.com/']
-    es_hosts = ['http://localhost:9200/', 'https://dev.es.chat.ask.eduworks.com/']
+    es_hosts = ['https://dev.es.chat.ask.eduworks.com/', 'https://qa.es.chat.ask.eduworks.com/']
+    #es_hosts = ['http://localhost:9200/', 'https://dev.es.chat.ask.eduworks.com/']
     for es_host in es_hosts:
         es = Elasticsearch([es_host], http_auth=('elastic', 'changeme'), timeout=140)
         if es.indices.exists(index):
@@ -334,13 +336,11 @@ def save_data(path: str, all_data: list):
     ds = Dataset.from_pandas(pd.DataFrame(all_data))  
     ds.save_to_disk(f'./{DATA_PATH}/{path}')
     
-    # Vectorizing the data
-    if 'test_' not in path:
-        all_data = get_vectors(all_data)
+    all_data = get_vectors(all_data)    
     all_data = list(prep_to_save(all_data))
     ingest_into_es(all_data, path)
     
-    # print(f"fully ingested {path} into elasticsearch")
+    print(f"fully ingested {path} into elasticsearch")
     
 def parse_ask_extension_data():
     ask_extension_data = get_ask_extension_data()
@@ -364,10 +364,15 @@ def get_all_data():
     all_data = [item for item in all_data if item['url'] and item['text']]
     save_data('chatbot_data', all_data)
     return list(set([item['url'] for item in all_data]))
-    
-   
+
+def clean_and_save_ask():
+    all_data = parse_ask_extension_data()
+    with open('./chunked_data/ask_only.json', 'w', encoding='utf-8') as w:
+        json.dump(all_data, w, indent=4, ensure_ascii=False)
+
 def main():
-    all_links = get_all_data()
+    #all_links = get_all_data()
+    clean_and_save_ask()
     
 if __name__ == '__main__':
     main()
