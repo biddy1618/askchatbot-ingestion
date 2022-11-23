@@ -197,17 +197,16 @@ def get_ask_text(data: list) -> list:
         is_dict= True if isinstance(item['answer'], dict) else False
         for a in item['answer']:
             text = get_text_dict_format(item, a) if is_dict else get_text_list_format(a)
-            if not text:
-                continue
-            text = re.sub('([a-z,”:.])\n([a-z“–])', r'\1 \2', text) # Weird line break in some answers
-            text = re.sub('\.([A-Z])', r'.\n\1', text)
-            chunked_items = chunk_data(text, used_markdown=False)
-            for chunk in chunked_items:
-                chunk = re.sub('\s+', ' ', chunk)
-                if chunk not in unique_text:
-                    unique_text.add(chunk)
-                    yield {'source': "ask_extension_kb", "state": state, 'title': title, 'url': url, 'text': chunk, 'thumbnail': thumbnail, "subHead": subhead}
-                     
+            if text:
+                text = re.sub('([a-z,”:.])\n([a-z“–])', r'\1 \2', text) # Weird line break in some answers
+                text = re.sub('\.([A-Z])', r'.\n\1', text)
+                chunked_items = chunk_data(text, used_markdown=False)
+                for chunk in chunked_items:
+                    chunk = re.sub('\s+', ' ', chunk)
+                    if chunk not in unique_text:
+                        unique_text.add(chunk)
+                        yield {'source': "ask_extension_kb", "state": state, 'title': title, 'url': url, 'text': chunk, 'thumbnail': thumbnail, "subHead": subhead}
+                        
                 
 def get_link(item: dict) -> str:
     """Creates ask url from faq-id"""
